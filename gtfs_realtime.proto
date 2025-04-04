@@ -1,0 +1,279 @@
+syntax = "proto2";
+
+package transit_realtime;
+
+option java_package = "com.google.transit.realtime";
+option java_outer_classname = "GtfsRealtime";
+
+// The contents of a feed message.
+message FeedMessage {
+  // Each message in the feed.
+  repeated FeedEntity entity = 1;
+  
+  // Version of the feed specification.
+  required string header = 2;
+  
+  // The time this feed was generated (seconds since epoch).
+  optional uint64 timestamp = 3;
+}
+
+// A definition of an entity in the feed.
+message FeedEntity {
+  // Unique ID for this entity.
+  required string id = 1;
+  
+  // Whether this entity is active.
+  optional bool is_deleted = 2 [default = false];
+  
+  // Data for this entity (one of the following must be present).
+  optional TripUpdate trip_update = 3;
+  optional VehiclePosition vehicle = 4;
+  optional Alert alert = 5;
+}
+
+// An update on the progress of a vehicle along a trip.
+message TripUpdate {
+  // The trip this update is about.
+  required TripDescriptor trip = 1;
+  
+  // The vehicle performing this trip.
+  optional VehicleDescriptor vehicle = 3;
+  
+  // Updates to the scheduled stop times.
+  repeated StopTimeUpdate stop_time_update = 2;
+  
+  // Timestamp of this update.
+  optional uint64 timestamp = 4;
+  
+  // Current delay of the trip (seconds, can be negative).
+  optional int32 delay = 5;
+}
+
+// An update on the position of a vehicle.
+message VehiclePosition {
+  // The trip this vehicle is on.
+  optional TripDescriptor trip = 1;
+  
+  // The vehicle this position describes.
+  optional VehicleDescriptor vehicle = 2;
+  
+  // Current position of the vehicle.
+  message Position {
+    // Degrees north, in the WGS-84 coordinate system.
+    required float latitude = 1;
+    
+    // Degrees east, in the WGS-84 coordinate system.
+    required float longitude = 2;
+    
+    // Bearing, in degrees, clockwise from north.
+    optional float bearing = 3;
+    
+    // Odometer value, in meters.
+    optional double odometer = 4;
+    
+    // Momentary speed measured, in meters per second.
+    optional float speed = 5;
+  }
+  optional Position position = 1;
+  
+  // Timestamp of this position.
+  optional uint64 timestamp = 3;
+  
+  // Enumeration of vehicle states.
+  enum VehicleStopStatus {
+    INCOMING_AT = 0;
+    STOPPED_AT = 1;
+    IN_TRANSIT_TO = 2;
+  }
+  optional VehicleStopStatus current_status = 5 [default = IN_TRANSIT_TO];
+  
+  // Current stop sequence index of the trip.
+  optional uint32 current_stop_sequence = 6;
+  
+  // Current stop ID of the trip.
+  optional string stop_id = 7;
+  
+  // Congestion level of the vehicle.
+  enum CongestionLevel {
+    UNKNOWN_CONGESTION_LEVEL = 0;
+    RUNNING_SMOOTHLY = 1;
+    STOP_AND_GO = 2;
+    CONGESTION = 3;
+    SEVERE_CONGESTION = 4;
+  }
+  optional CongestionLevel congestion_level = 9;
+  
+  // Occupancy level of the vehicle.
+  enum OccupancyStatus {
+    EMPTY = 0;
+    MANY_SEATS_AVAILABLE = 1;
+    FEW_SEATS_AVAILABLE = 2;
+    STANDING_ROOM_ONLY = 3;
+    CRUSHED_STANDING_ROOM_ONLY = 4;
+    FULL = 5;
+    NOT_ACCEPTING_PASSENGERS = 6;
+  }
+  optional OccupancyStatus occupancy_status = 10;
+}
+
+// An alert about an event affecting a GTFS element.
+message Alert {
+  // Time when the alert is active.
+  repeated TimeRange active_period = 1;
+  
+  // Transit elements affected by this alert.
+  repeated EntitySelector informed_entity = 2;
+  
+  // Cause of this alert.
+  enum Cause {
+    UNKNOWN_CAUSE = 1;
+    OTHER_CAUSE = 2;
+    TECHNICAL_PROBLEM = 3;
+    STRIKE = 4;
+    DEMONSTRATION = 5;
+    ACCIDENT = 6;
+    HOLIDAY = 7;
+    WEATHER = 8;
+    MAINTENANCE = 9;
+    CONSTRUCTION = 10;
+    POLICE_ACTIVITY = 11;
+    MEDICAL_EMERGENCY = 12;
+  }
+  optional Cause cause = 3;
+  
+  // Effect of this alert.
+  enum Effect {
+    NO_SERVICE = 1;
+    REDUCED_SERVICE = 2;
+    SIGNIFICANT_DELAYS = 3;
+    DETOUR = 4;
+    ADDITIONAL_SERVICE = 5;
+    MODIFIED_SERVICE = 6;
+    OTHER_EFFECT = 7;
+    UNKNOWN_EFFECT = 8;
+    STOP_MOVED = 9;
+  }
+  optional Effect effect = 4;
+  
+  // Alert URL with more information.
+  optional TranslatedString url = 5;
+  
+  // Header text for the alert.
+  optional TranslatedString header_text = 6;
+  
+  // Detailed description of the alert.
+  optional TranslatedString description_text = 7;
+}
+
+// A descriptor for a trip in the schedule.
+message TripDescriptor {
+  // The trip_id from the GTFS feed.
+  optional string trip_id = 1;
+  
+  // The route_id from the GTFS feed.
+  optional string route_id = 2;
+  
+  // The direction_id from the GTFS feed.
+  optional uint32 direction_id = 3;
+  
+  // Start time of the trip (e.g., "12:30").
+  optional string start_time = 4;
+  
+  // Start date of the trip (YYYYMMDD).
+  optional string start_date = 5;
+  
+  // The trip's schedule relationship.
+  enum ScheduleRelationship {
+    SCHEDULED = 0;
+    ADDED = 1;
+    UNSCHEDULED = 2;
+    CANCELED = 3;
+    REPLACEMENT = 5;
+  }
+  optional ScheduleRelationship schedule_relationship = 6;
+}
+
+// A descriptor for a vehicle.
+message VehicleDescriptor {
+  // Internal ID used for this vehicle.
+  optional string id = 1;
+  
+  // User-visible label (e.g., bus number).
+  optional string label = 2;
+  
+  // Vehicle license plate number.
+  optional string license_plate = 3;
+}
+
+// Realtime update for a stop on a trip.
+message StopTimeUpdate {
+  // The stop sequence from the GTFS feed.
+  optional uint32 stop_sequence = 1;
+  
+  // The stop_id from the GTFS feed.
+  optional string stop_id = 2;
+  
+  // Arrival info for the stop.
+  message StopTimeEvent {
+    // Time in seconds since epoch, or 0 for schedule time.
+    optional int64 time = 1;
+    
+    // Seconds delay (negative is early).
+    optional int32 delay = 2;
+    
+    // Uncertainty of prediction (seconds).
+    optional int32 uncertainty = 3;
+  }
+  optional StopTimeEvent arrival = 3;
+  
+  // Departure info for the stop.
+  optional StopTimeEvent departure = 4;
+  
+  // Schedule relationship for this stop.
+  enum ScheduleRelationship {
+    SCHEDULED = 0;
+    SKIPPED = 1;
+    NO_DATA = 2;
+  }
+  optional ScheduleRelationship schedule_relationship = 5 [default = SCHEDULED];
+}
+
+// A selection of events based on a criteria.
+message EntitySelector {
+  // The agency this selector is for.
+  optional string agency_id = 1;
+  
+  // The route this selector is for.
+  optional string route_id = 2;
+  
+  // The route_type this selector is for.
+  optional int32 route_type = 3;
+  
+  // The trip this selector is for.
+  optional TripDescriptor trip = 4;
+  
+  // The stop this selector is for.
+  optional string stop_id = 5;
+}
+
+// A time range when an alert is active.
+message TimeRange {
+  // Start time (seconds since epoch).
+  optional uint64 start = 1;
+  
+  // End time (seconds since epoch).
+  optional uint64 end = 2;
+}
+
+// Text with optional translations.
+message TranslatedString {
+  message Translation {
+    // A UTF-8 string with the text.
+    required string text = 1;
+    
+    // Language code (e.g., en-US).
+    optional string language = 2;
+  }
+  // At least one translation must be provided.
+  repeated Translation translation = 1;
+} 

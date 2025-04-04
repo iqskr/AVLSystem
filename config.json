@@ -1,0 +1,19 @@
+{
+    "vehicles": {
+        "130": {
+            "device_id": "2068",
+            "label": "130"
+        }
+    },
+    "routes": {
+        "32": {
+            "trips": [
+                {
+                    "trip_id": "5001",
+                    "start_time": "04:23:00",
+                    "direction_id": 16
+                }
+            ]
+        }
+    }
+} 
