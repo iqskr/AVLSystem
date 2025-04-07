@@ -13,6 +13,7 @@ import requests
 import tempfile
 import zipfile
 import uuid
+import math
 
 
 # Configure logging
@@ -31,6 +32,7 @@ class AVLSystem:
         self.vehicle_positions = {}
         self.trip_updates = {}
         self.service_alerts = {}
+        self.previous_positions = {}  # Store previous positions for bearing calculation
         
         # Load configuration
         self.config = self.load_config()
@@ -241,6 +243,23 @@ class AVLSystem:
             return stops
         return []
 
+    def calculate_bearing(self, lat1, lon1, lat2, lon2):
+        """
+        Calculate the bearing between two points using the Haversine formula.
+        Returns bearing in degrees (0-360, where 0 is North, 90 is East, etc.)
+        """
+        lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
+        
+        dlon = lon2 - lon1
+        
+        y = math.sin(dlon) * math.cos(lat2)
+        x = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(dlon)
+        bearing = math.atan2(y, x)
+        bearing = math.degrees(bearing)
+        bearing = (bearing + 360) % 360  # Normalize to 0-360
+        
+        return bearing
+
     def create_vehicle_position(self, gps_data):
         """Create a VehiclePosition protobuf message"""
         feed_message = gtfs_realtime_pb2.FeedMessage()
@@ -267,16 +286,59 @@ class AVLSystem:
         
         # Set position information
         try:
-            vehicle.position.latitude = float(gps_data.get('latitude', 0.0))
-            vehicle.position.longitude = float(gps_data.get('longitude', 0.0))
-            vehicle.position.bearing = float(gps_data.get('bearing', 0.0))
-           # vehicle.position.speed = float(gps_data.get('speed', 0.0))
+            current_lat = float(gps_data.get('latitude', 0.0))
+            current_lon = float(gps_data.get('longitude', 0.0))
+            device_id = str(gps_data.get('device_id'))
+            
+            logger.info(f"Processing position for vehicle {device_id}: lat={current_lat}, lon={current_lon}")
+            
+            vehicle.position.latitude = current_lat
+            vehicle.position.longitude = current_lon
+            
+            # Calculate bearing based on previous position if available
+            if device_id in self.previous_positions:
+                prev_pos = self.previous_positions[device_id]
+                logger.info(f"Previous position found for {device_id}: lat={prev_pos['latitude']}, lon={prev_pos['longitude']}")
+                
+                # Only calculate bearing if we have valid coordinates
+                if (current_lat != 0.0 and current_lon != 0.0 and 
+                    prev_pos['latitude'] != 0.0 and prev_pos['longitude'] != 0.0):
+                    bearing = self.calculate_bearing(
+                        prev_pos['latitude'], prev_pos['longitude'],
+                        current_lat, current_lon
+                    )
+                    logger.info(f"Calculated bearing: {bearing} degrees")
+                    vehicle.position.bearing = bearing
+                else:
+                    logger.warning(f"Invalid coordinates for bearing calculation: current=({current_lat}, {current_lon}), previous=({prev_pos['latitude']}, {prev_pos['longitude']})")
+                    vehicle.position.bearing = float(gps_data.get('bearing', 0.0))
+            else:
+                logger.info(f"No previous position found for {device_id}, using GPS bearing")
+                # Try to get bearing from GPS data
+                gps_bearing = gps_data.get('bearing')
+                if gps_bearing is not None:
+                    try:
+                        vehicle.position.bearing = float(gps_bearing)
+                        logger.info(f"Using GPS bearing: {gps_bearing}")
+                    except (ValueError, TypeError):
+                        logger.warning(f"Invalid GPS bearing value: {gps_bearing}")
+                        vehicle.position.bearing = 0.0
+                else:
+                    logger.warning("No bearing information available in GPS data")
+                    vehicle.position.bearing = 0.0
+            
+            # Update previous position
+            self.previous_positions[device_id] = {
+                'latitude': current_lat,
+                'longitude': current_lon,
+                'timestamp': time.time()
+            }
+            
         except (ValueError, TypeError) as e:
             logger.error(f"Error converting GPS coordinates: {e}")
             vehicle.position.latitude = 0.0
             vehicle.position.longitude = 0.0
             vehicle.position.bearing = 0.0
-            #vehicle.position.speed = 0.0
         
         # Set vehicle information
         vehicle.vehicle.id = str(gps_data.get('device_id'))
